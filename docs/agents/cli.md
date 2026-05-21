@@ -40,7 +40,7 @@ Supported keys inside `--agent` and `--role` values:
 name           model id / served-model-name
 base_url       OpenAI-compatible base URL (must include /v1 for hosted)
 api_key        bearer; any non-empty string is fine for self-hosted
-max_tokens     int, default 4096
+max_tokens     int, default 16384
 temperature    float, default 0.0
 use_streaming  bool, default false
 protocol       explicit override: openai | harmony | mock | ...

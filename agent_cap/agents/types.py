@@ -13,7 +13,7 @@ class ModelEndpoint:
     name: str
     base_url: str = "http://localhost:30000/v1"
     api_key: str = "dummy"
-    max_tokens: int = 4096
+    max_tokens: int = 16384
     temperature: float = 0.0
     use_streaming: bool = False
     openrouter_provider: str = ""
@@ -26,7 +26,7 @@ class ModelEndpoint:
             name=str(data.get("name") or data.get("model") or ""),
             base_url=str(data.get("base_url", "http://localhost:30000/v1")),
             api_key=str(data.get("api_key", "dummy")),
-            max_tokens=int(data.get("max_tokens", 4096) or 4096),
+            max_tokens=int(data.get("max_tokens", 16384) or 16384),
             temperature=float(data.get("temperature", 0.0) or 0.0),
             use_streaming=bool(data.get("use_streaming", False)),
             openrouter_provider=str(data.get("openrouter_provider", "")),

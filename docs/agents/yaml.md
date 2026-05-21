@@ -13,7 +13,7 @@ demo_tools: true
 
 defaults:                # optional; merged into every agent
   api_key: EMPTY
-  max_tokens: 4096
+  max_tokens: 16384
   temperature: 0.0
 
 agents:
