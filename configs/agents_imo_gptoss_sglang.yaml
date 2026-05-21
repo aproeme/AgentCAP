@@ -13,6 +13,8 @@ agents:
     engine: sglang
     max_tokens: 131072
     temperature: 0.0
+    top_p: 1.0
+    seed: 42
 
 judge:
   name: openrouter/elephant-alpha

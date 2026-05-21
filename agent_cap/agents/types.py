@@ -15,6 +15,8 @@ class ModelEndpoint:
     api_key: str = "dummy"
     max_tokens: int = 16384
     temperature: float = 0.0
+    top_p: float = 1.0
+    seed: Optional[int] = None
     use_streaming: bool = False
     openrouter_provider: str = ""
     protocol: str = ""
@@ -22,12 +24,16 @@ class ModelEndpoint:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ModelEndpoint":
+        seed_raw = data.get("seed")
+        seed = int(seed_raw) if seed_raw not in (None, "", "null") else None
         return cls(
             name=str(data.get("name") or data.get("model") or ""),
             base_url=str(data.get("base_url", "http://localhost:30000/v1")),
             api_key=str(data.get("api_key", "dummy")),
             max_tokens=int(data.get("max_tokens", 16384) or 16384),
             temperature=float(data.get("temperature", 0.0) or 0.0),
+            top_p=float(data.get("top_p", 1.0) or 1.0),
+            seed=seed,
             use_streaming=bool(data.get("use_streaming", False)),
             openrouter_provider=str(data.get("openrouter_provider", "")),
             protocol=str(data.get("protocol", "")),
@@ -55,8 +61,8 @@ class AgentSpec:
             can_call_tools=bool(data.get("can_call_tools", True)),
             extra={k: v for k, v in data.items() if k not in {
                 "name", "model", "base_url", "api_key", "max_tokens", "temperature",
-                "use_streaming", "openrouter_provider", "protocol", "engine",
-                "system_prompt", "can_call_tools",
+                "top_p", "seed", "use_streaming", "openrouter_provider",
+                "protocol", "engine", "system_prompt", "can_call_tools",
             }},
         )
 

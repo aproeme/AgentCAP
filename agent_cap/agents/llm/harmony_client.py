@@ -170,8 +170,11 @@ class HarmonyClient:
             "prompt": prompt_ids,
             "max_tokens": max(1, int(endpoint.max_tokens) - len(prompt_ids)),
             "temperature": float(endpoint.temperature),
+            "top_p": float(endpoint.top_p),
             "stop_token_ids": list(self._stop_token_ids),
         }
+        if endpoint.seed is not None:
+            payload["seed"] = int(endpoint.seed)
         raw = await self._post_json(url, payload, endpoint.api_key, "vLLM /completions")
         choices = raw.get("choices") or []
         token_ids = (
@@ -189,18 +192,21 @@ class HarmonyClient:
 
         url = endpoint.base_url.rstrip("/") + "/generate"
         max_new = max(1, int(endpoint.max_tokens) - len(prompt_ids))
+        sampling_params: Dict[str, Any] = {
+            "max_new_tokens": max_new,
+            "temperature": float(endpoint.temperature),
+            "top_p": float(endpoint.top_p),
+            "stop_token_ids": list(self._stop_token_ids),
+            "skip_special_tokens": False,
+            "spaces_between_special_tokens": False,
+            "no_stop_trim": True,
+        }
+        if endpoint.seed is not None:
+            sampling_params["seed"] = int(endpoint.seed)
         payload: Dict[str, Any] = {
             "input_ids": [int(t) for t in prompt_ids],
             "rid": str(_uuid.uuid4()),
-            "sampling_params": {
-                "max_new_tokens": max_new,
-                "temperature": float(endpoint.temperature),
-                "top_p": 1.0,
-                "stop_token_ids": list(self._stop_token_ids),
-                "skip_special_tokens": False,
-                "spaces_between_special_tokens": False,
-                "no_stop_trim": True,
-            },
+            "sampling_params": sampling_params,
             "stream": False,
         }
         raw = await self._post_json(url, payload, endpoint.api_key, "sglang /generate")

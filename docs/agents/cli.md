@@ -42,6 +42,8 @@ base_url       OpenAI-compatible base URL (must include /v1 for hosted)
 api_key        bearer; any non-empty string is fine for self-hosted
 max_tokens     int, default 16384
 temperature    float, default 0.0
+top_p          float, default 1.0 (harmony protocol only; openai uses provider default)
+seed           int, optional (harmony protocol only; openai client does not forward seed)
 use_streaming  bool, default false
 protocol       explicit override: openai | harmony | mock | ...
 engine         serving-engine variant for the protocol (e.g. vllm | sglang for harmony)
