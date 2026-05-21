@@ -1,0 +1,16 @@
+strategy: plan-execute
+demo_tools: true
+
+agents:
+  planner:
+    name: mock-planner
+    base_url: http://localhost:30000/v1
+    api_key: dummy
+    max_tokens: 1024
+  executor:
+    name: mock-executor
+    base_url: http://localhost:30000/v1
+    api_key: dummy
+    max_tokens: 1024
+
+task: "What is (12 + 8) / 4?"
