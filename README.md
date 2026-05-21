@@ -124,6 +124,7 @@ Full reference under [`docs/agents/`](docs/agents/):
 | [docs/agents/yaml.md](docs/agents/yaml.md) | YAML config: agents pool, roles, replicas, share_state, includes |
 | [docs/agents/concepts.md](docs/agents/concepts.md) | Agent, Strategy, Protocol, Tool, Evaluator |
 | [docs/agents/protocols.md](docs/agents/protocols.md) | LLM protocols (openai/harmony/mock), auto-routing, adding new |
+| [docs/agents/serving.md](docs/agents/serving.md) | vLLM / sglang launch commands per model family and tool-parser flags |
 | [docs/agents/extending.md](docs/agents/extending.md) | Recipes for custom strategies, protocols, tools, evaluators |
 
 ## Acknowledgement
