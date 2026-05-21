@@ -56,6 +56,9 @@ Built-ins:
 
 A Strategy declares `required_roles` and implements `async run(task, agents, tools)`.
 
+See [strategies.md](strategies.md) for per-strategy behavior, when-to-use,
+when-not-to-use, CLI and YAML examples, and the at-a-glance comparison.
+
 ## Protocol (LLM client)
 
 `agents/llm/`. Speaks to one model endpoint.
