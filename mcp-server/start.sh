@@ -30,10 +30,12 @@ fi
 
 if [ ! -d "$SCRIPT_DIR/.venv" ]; then
     echo "First run: creating venv and installing dependencies..."
-    uv venv "$SCRIPT_DIR/.venv" --python 3.13
+    # Match the docker base image (ghcr.io/astral-sh/uv:python3.12-bookworm-slim)
+    uv venv "$SCRIPT_DIR/.venv" --python 3.12
     source "$SCRIPT_DIR/.venv/bin/activate"
     uv pip install -r "$SCRIPT_DIR/pyproject.toml"
-    uv pip install -e "$AGENT_ENV_DIR" --no-deps
+    # Install agent-environment WITH its own deps (requests, etc.) to match docker `uv sync`
+    uv pip install -e "$AGENT_ENV_DIR"
 else
     source "$SCRIPT_DIR/.venv/bin/activate"
 fi
