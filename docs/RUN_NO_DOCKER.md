@@ -28,18 +28,23 @@ which has the gpt-oss tool-use fixes that any reproduction depends on.
 
 ## 0. Required env vars and endpoints
 
+Shell exports for the runner side:
+
 ```bash
 # Already-running model server (any OpenAI-compatible /v1 endpoint)
 export VLLM_URL="http://<your-gpu-host>:30002/v1"
 export MODEL_NAME="openai/gpt-oss-120b"   # whatever --served-model-name is
 
-# MCP tool credentials (only needed for MCP-ATLAS)
-export GITHUB_TOKEN="ghp_..."
-export BRAVE_API_KEY="BSAxk..."
-
 # Modal (only needed for SWE-bench Lite without Docker)
 # After `pip install modal`, run `modal token new` once to authenticate.
 ```
+
+MCP tool credentials (only needed for MCP-ATLAS) live in
+`third_party/mcp-atlas/.env` (gitignored). `mcp-server/start.sh` copies
+`env.template` to `.env` on first run; fill in the keys you need
+(`GITHUB_PERSONAL_ACCESS_TOKEN`, `BRAVE_API_KEY`, `ALCHEMY_API_KEY`, etc.).
+Servers with empty keys still start; they return auth errors only at
+tool-call time.
 
 Sanity check the model server first:
 
@@ -74,48 +79,55 @@ benchmark. It runs as a separate process; we set it up in §2.
 The Docker image `ghcr.io/scaleapi/mcp-atlas:latest` boils down to:
 
 - a Python `agent-environment` web service on port 1984 (uvicorn)
-- which lazily spawns 22 MCP servers over stdio (mostly Node `npx` and
+- which lazily spawns ~22 MCP servers over stdio (mostly Node `npx` and
   Python `uvx` packages)
 
-Start it directly from the submodule:
+`mcp-server/start.sh` does the docker-equivalent setup on the host
+(Python 3.12 venv, install `agent-environment` with deps, `envsubst` the
+config template, launch uvicorn). One command:
 
 ```bash
-cd /path/to/AgentCAP/third_party/mcp-atlas/agent-environment
-uv sync                                   # one-time
-
-# httpx>=0.28 dropped TimeoutError; agent-environment still imports it.
-# Patch via sitecustomize so all subprocesses get the fix:
-python3 -c '
-import site, os
-sc = os.path.join(site.getsitepackages()[0], "sitecustomize.py")
-os.makedirs(os.path.dirname(sc), exist_ok=True)
-open(sc, "w").write(
-    "import httpx\n"
-    "if not hasattr(httpx, \"TimeoutError\"):\n"
-    "    httpx.TimeoutError = httpx.TimeoutException\n"
-)
-print("httpx.TimeoutError patched")
-'
-
-ENABLED_SERVERS="arxiv,brave-search,calculator,cli-mcp-server,clinicaltrialsgov-mcp-server,context7,ddg-search,desktop-commander,fetch,filesystem,git,github,mcp-code-executor,mcp-server-code-runner,memory,met-museum,open-library,osm-mcp-server,pubmed,weather,whois,wikipedia" \
-GITHUB_TOKEN="$GITHUB_TOKEN" \
-BRAVE_API_KEY="$BRAVE_API_KEY" \
-./entrypoint.sh uv run python -m uvicorn agent_environment.main:app \
-    --host 0.0.0.0 --port 1984
+cd /path/to/AgentCAP
+bash mcp-server/start.sh
 ```
 
-The first launch installs all `npx` / `uvx` MCP servers; this can take
-10–20 minutes and a few hundred MB of disk. Subsequent runs are instant.
+First run:
 
-Leave this running. In another shell, sanity check:
+1. Builds `mcp-server/.venv` with Python 3.12 and installs
+   `agent-environment` (matches docker `uv sync`).
+2. If `third_party/mcp-atlas/.env` doesn't exist, copies it from
+   `env.template` and exits. Fill in the API keys you need
+   (see §0), then re-run.
+3. Re-runs source the `.env`, run `envsubst` on
+   `mcp_server_template.json` to produce `mcp_server_config.json`, and
+   start `uvicorn agent_environment.main:app --host 0.0.0.0 --port 1984`.
+
+Server-list selection lives in `start.sh`'s `ENABLED_SERVERS` default
+(21 free-tier servers) — override per invocation:
+
+```bash
+ENABLED_SERVERS="calculator,fetch,wikipedia" bash mcp-server/start.sh
+MCP_PORT=2000 bash mcp-server/start.sh             # different port
+MCP_ATLAS_DIR=/path/to/mcp-atlas bash mcp-server/start.sh   # external clone
+```
+
+The first launch downloads all `npx` / `uvx` MCP server packages on
+demand; this can take 5–15 minutes depending on network. Subsequent
+runs hit cache and start in seconds.
+
+System packages required on the host: `python3.12`, `uv` (`pip install uv`),
+`node >= 20`, `npm`, `envsubst` (in `gettext-base`).
+
+Leave the server running. In another shell, sanity check:
 
 ```bash
 curl -s http://localhost:1984/health
+# {"status":"health_and_client_connection_ok"}
 ```
 
-> If `npm` / `uv` cannot be installed on this host, this benchmark cannot
-> be reproduced exactly. The set of 22 servers is what defines the
-> benchmark and dropping any of them changes results.
+> If `npm` / `uv` / `node>=20` cannot be installed on this host, this
+> benchmark cannot be reproduced exactly. The set of MCP servers is
+> what defines the benchmark and dropping any of them changes results.
 
 ### 2b. Run the benchmark
 
