@@ -112,7 +112,25 @@ class HarmonyClient:
             elif role == "user":
                 harmony_messages.append(Message.from_role_and_content(Role.USER, content))
             elif role == "assistant":
-                harmony_messages.append(Message.from_role_and_content(Role.ASSISTANT, content))
+                tool_calls = m.get("tool_calls") or []
+                if tool_calls:
+                    if content:
+                        harmony_messages.append(
+                            Message.from_role_and_content(Role.ASSISTANT, content)
+                        )
+                    for call in tool_calls:
+                        fn = (call or {}).get("function") or {}
+                        tool_name = str(fn.get("name") or "python")
+                        args_str = fn.get("arguments", "")
+                        if not isinstance(args_str, str):
+                            args_str = json.dumps(args_str)
+                        call_msg = Message.from_role_and_content(Role.ASSISTANT, args_str)
+                        call_msg.recipient = tool_name
+                        harmony_messages.append(call_msg)
+                else:
+                    harmony_messages.append(
+                        Message.from_role_and_content(Role.ASSISTANT, content)
+                    )
             elif role == "tool":
                 tool_name = str(m.get("name") or m.get("tool_call_id") or "python")
                 msg = Message.from_role_and_content(Role.TOOL, content)
