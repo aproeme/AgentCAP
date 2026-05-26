@@ -64,9 +64,22 @@ python -m agent_cap.agents \
   --tool-backend mcp --mcp-server-url http://localhost:1984
 ```
 
+Supervisor with two workers — the supervisor delegates each turn to a worker
+of its choice and stops when it emits `DONE: <answer>`:
+
+```bash
+python -m agent_cap.agents \
+  --strategy supervisor \
+  --agent supervisor=name=openai/Qwen3.5-4B,base_url=http://localhost:30000/v1,api_key=dummy \
+  --agent researcher=name=openai/Qwen3.5-4B,base_url=http://localhost:30000/v1,api_key=dummy \
+  --agent writer=name=openai/Qwen3.5-4B,base_url=http://localhost:30000/v1,api_key=dummy \
+  --task "Write a one-paragraph summary of the 2024 EU AI Act, then compute its character count." \
+  --tool-backend mcp --mcp-server-url http://localhost:1984
+```
+
 For a YAML version (a 1-line `roles:` mapping fans out one endpoint to N
 roles), see [configs/agents_pool.yaml](configs/agents_pool.yaml). Other
-strategies — `supervisor`, `sequential` — work the same way; see
+strategies — `sequential`, etc. — work the same way; see
 [docs/agents/strategies.md](docs/agents/strategies.md).
 
 ### Reasoning benchmark — IMO AnswerBench via Harmony (gpt-oss)
