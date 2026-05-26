@@ -109,10 +109,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                    help="Bind a strategy role to a named agent from the pool. "
                         "Repeatable. e.g. --role planner=gpt4o --role critic=gpt4o "
                         "(both share one endpoint definition).")
-    p.add_argument("--share-state", action="append", default=[],
-                   metavar="ROLE1,ROLE2",
-                   help="Roles in this group share ONE Agent instance "
-                        "(same message history). Repeatable for multiple groups.")
     p.add_argument("--task", type=str, default=None,
                    help="Single user prompt. Use --task-file for batch JSONL.")
     p.add_argument("--task-file", type=str, default=None,
@@ -218,8 +214,8 @@ def _collect_quick_agent_fields(args: argparse.Namespace) -> Dict[str, Any]:
     return fields
 
 
-def _build_agent_specs(args: argparse.Namespace) -> Tuple[Dict[str, AgentSpec], List[List[str]]]:
-    """Return (role -> AgentSpec, sharing_groups).
+def _build_agent_specs(args: argparse.Namespace) -> Dict[str, AgentSpec]:
+    """Return role -> AgentSpec.
 
     Resolves the two YAML layouts:
 
@@ -227,21 +223,17 @@ def _build_agent_specs(args: argparse.Namespace) -> Tuple[Dict[str, AgentSpec], 
 
     B) Pool + mapping (decoupled): `agents:` is a pool of endpoint defs (keys
        are arbitrary names); `roles:` maps strategy roles to agent names.
-       Multiple roles can point to the same agent for endpoint sharing.
-
-    `sharing_groups` is a list of role-name lists; roles in the same group
-    share ONE Agent instance (same conversation state).
+       Multiple roles can point to the same agent for endpoint sharing —
+       each role still gets its own Agent instance with its own state.
     """
     pool: Dict[str, Dict[str, Any]] = {}
     roles_map: Dict[str, str] = {}
-    sharing_groups: List[List[str]] = []
 
     def merge_layout(cfg: Dict[str, Any], base_dir: Path) -> None:
-        nonlocal pool, roles_map, sharing_groups
-        expanded, this_roles, this_shares = _resolve_layout(cfg, base_dir)
+        nonlocal pool, roles_map
+        expanded, this_roles = _resolve_layout(cfg, base_dir)
         pool.update(expanded)
         roles_map.update(this_roles)
-        sharing_groups.extend(this_shares)
 
     if args.config:
         merge_layout(_load_yaml(args.config), Path(args.config).parent)
@@ -271,11 +263,6 @@ def _build_agent_specs(args: argparse.Namespace) -> Tuple[Dict[str, AgentSpec], 
             raise argparse.ArgumentTypeError(f"--role expects ROLE=AGENT; got {raw!r}")
         roles_map[role.strip()] = agent_name.strip()
 
-    for raw in args.share_state:
-        group = [r.strip() for r in raw.split(",") if r.strip()]
-        if len(group) >= 2:
-            sharing_groups.append(group)
-
     if not roles_map:
         roles_map = {name: name for name in pool}
 
@@ -288,12 +275,12 @@ def _build_agent_specs(args: argparse.Namespace) -> Tuple[Dict[str, AgentSpec], 
             )
         specs[role] = AgentSpec.from_dict(role, pool[agent_name])
 
-    return specs, sharing_groups
+    return specs
 
 
 def _resolve_layout(
     cfg: Dict[str, Any], base_dir: Path,
-) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, str], List[List[str]]]:
+) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, str]]:
     expanded = _expand_agents_block(cfg, base_dir)
     roles_cfg = cfg.get("roles")
     roles_map: Dict[str, str] = {}
@@ -319,21 +306,7 @@ def _resolve_layout(
     elif roles_cfg is not None:
         raise ValueError("`roles:` must be a mapping role->agent_name")
 
-    sharing_cfg = cfg.get("share_state") or []
-    sharing_groups: List[List[str]] = []
-    if not isinstance(sharing_cfg, list):
-        raise ValueError("`share_state:` must be a list of role groups")
-    for entry in sharing_cfg:
-        if isinstance(entry, str):
-            group = [r.strip() for r in entry.split(",") if r.strip()]
-        elif isinstance(entry, list):
-            group = [str(r) for r in entry]
-        else:
-            raise ValueError("each share_state entry must be a list or comma-separated string")
-        if len(group) >= 2:
-            sharing_groups.append(group)
-
-    return expanded, roles_map, sharing_groups
+    return expanded, roles_map
 
 
 def _expand_agents_block(cfg: Dict[str, Any], base_dir: Path) -> Dict[str, Dict[str, Any]]:
@@ -445,7 +418,7 @@ async def _run_async(args: argparse.Namespace) -> int:
     if config_data.get("strategy") and args.strategy == "plan-execute":
         args.strategy = str(config_data["strategy"])
 
-    specs, sharing_groups = _build_agent_specs(args)
+    specs = _build_agent_specs(args)
     if not specs:
         if args.mock:
             specs = _default_mock_specs(args.strategy)
@@ -496,7 +469,7 @@ async def _run_async(args: argparse.Namespace) -> int:
                         _emit_progress(i, task, done[task.task_id])
                         continue
                     agents = _build_agents(
-                        specs, llm, tools, sharing_groups,
+                        specs, llm, tools,
                         session=sess, force_mock=args.mock,
                     )
                     run_res = await strategy.run(task, agents, tools)
@@ -636,23 +609,13 @@ def _parse_judge_config(cli_value, yaml_value) -> Dict[str, Any]:
     return cfg
 
 
-def _build_agents(specs, llm, tools, sharing_groups=None, session=None, force_mock=False):
+def _build_agents(specs, llm, tools, session=None, force_mock=False):
     """Build one Agent per spec, auto-routing protocol per endpoint.
 
     `llm` is used when force_mock=True (single shared MockLLMClient).
     Otherwise, each spec's endpoint is routed through the protocol registry,
     so e.g. a gpt-oss endpoint gets Harmony while a Qwen endpoint gets OpenAI.
     """
-    sharing_groups = sharing_groups or []
-    leader_of: Dict[str, str] = {}
-    for group in sharing_groups:
-        present = [r for r in group if r in specs]
-        if len(present) < 2:
-            continue
-        leader = present[0]
-        for follower in present[1:]:
-            leader_of[follower] = leader
-
     client_cache: Dict[str, Any] = {}
 
     def _client_for(spec) -> Any:
@@ -663,13 +626,7 @@ def _build_agents(specs, llm, tools, sharing_groups=None, session=None, force_mo
             client_cache[proto] = make_client(spec.endpoint, session=session)
         return client_cache[proto]
 
-    agents: Dict[str, Agent] = {}
-    for role, spec in specs.items():
-        if role in leader_of:
-            agents[role] = agents[leader_of[role]]
-        else:
-            agents[role] = Agent(spec, _client_for(spec), tools)
-    return agents
+    return {role: Agent(spec, _client_for(spec), tools) for role, spec in specs.items()}
 
 
 def _build_tools(args: argparse.Namespace, config: Dict[str, Any]) -> Optional[LocalToolRegistry]:

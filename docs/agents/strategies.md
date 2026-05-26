@@ -295,7 +295,8 @@ task -> role_1 -> output_1 -> role_2 -> output_2 -> role_3 -> final
 - Every subsequent agent receives the previous agent's `final_text()` as a
   user message.
 - Each agent runs its OWN tool-use loop (up to `max_turns`).
-- No shared conversation state by default; set `share_state` to pool history.
+- Each agent keeps its own conversation state; communication happens via the
+  user message that carries the previous agent's `final_text()`.
 
 ### When to use
 

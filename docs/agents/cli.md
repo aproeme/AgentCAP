@@ -32,7 +32,6 @@ command line:
 | `--agents-file PATH`   | yes | YAML file with only `agents:` (+ optional `defaults:`/`include:`). Later files override earlier. |
 | `--agents-glob PATTERN` | yes | Shell glob, expanded and sorted. |
 | `--role ROLE=AGENT`    | yes | Bind strategy role to a pool key. Lets two roles share one endpoint. |
-| `--share-state ROLE1,ROLE2` | yes | Roles in the group share one Agent instance (conversation history). |
 
 ### Single-agent shortcuts
 

@@ -158,7 +158,7 @@ built-in `llm-judge` does.
 
 ## 5. New agent topology
 
-If the role/agent decoupling (pool + roles + replicas + share_state) does not
+If the role/agent decoupling (pool + roles + replicas) does not
 cover what you need, write a Strategy. The Strategy receives `{role: Agent}`
 and is free to call them in any order, with any messages, sharing state
 however you want by manually copying `agent.state.messages`.

@@ -80,20 +80,20 @@ roles:
     replicas: 100        # worker-0 -> small-0, worker-99 -> small-99
 ```
 
-## Sharing conversation state
+## Multiple roles, one endpoint
 
-By default, two roles pointing to the same agent get separate `Agent`
-instances (same endpoint, independent message histories).
-
-To share one instance (joint conversation):
+Two roles pointing to the same agent get separate `Agent` instances —
+same endpoint URL, independent message histories, independent
+`system_prompt`s. The inference server handles them as two distinct
+requests:
 
 ```yaml
+agents:
+  gpt4o:
+    name: gpt-4o
 roles:
   planner: gpt4o
   critic:  gpt4o
-
-share_state:
-  - [planner, critic]    # one Agent, one history
 ```
 
 ## Includes
@@ -115,7 +115,6 @@ agents:                  # top-level wins over included files
 | `strategy` | Strategy name. |
 | `agents` | Pool. |
 | `roles` | Role -> agent mapping (optional, enables layout B). |
-| `share_state` | List of role-group lists. |
 | `defaults` | Fields merged into every agent in `agents:`. |
 | `include` | Recursive YAML files to merge. |
 | `task` / `tasks` | Inline task(s). |
