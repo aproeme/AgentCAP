@@ -1,0 +1,17 @@
+strategy: plan-execute
+demo_tools: true
+
+defaults:
+  base_url: http://localhost:30000/v1
+  api_key: EMPTY
+  max_tokens: 2048
+
+agents:
+  gpt4o:
+    name: gpt-4o
+
+roles:
+  planner: gpt4o
+  executor: gpt4o
+
+task: "Two roles, one endpoint — endpoint is shared but state is separate."

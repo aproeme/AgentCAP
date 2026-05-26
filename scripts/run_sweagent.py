@@ -279,7 +279,8 @@ class K8sPortForward:
 # ---------------------------------------------------------------------------
 
 def run_one_task(task_idx, instance_id, dockerhub_tag, problem_statement,
-                 vllm_url, output_dir, sweagent_dir, deploy, pf_mgr=None):
+                 vllm_url, output_dir, sweagent_dir, deploy, model_name,
+                 pf_mgr=None):
     log(f"[task {task_idx}] START {instance_id[:60]}")
     if pf_mgr:
         pf_mgr.ensure_alive()
@@ -292,12 +293,19 @@ def run_one_task(task_idx, instance_id, dockerhub_tag, problem_statement,
         task_output = output_dir / f"task_{task_idx:03d}"
         task_output.mkdir(parents=True, exist_ok=True)
         ps_file = task_output / "problem.txt"
-        ps_file.write_text(problem_statement)
+        rules = (
+            "MANDATORY RULES (read carefully before starting):\n"
+            "- Do NOT modify any test files. Only edit source code.\n"
+            "- Do NOT submit until you have run the tests and they all pass.\n"
+            "- If tests fail, keep trying — analyze the error, fix your code, re-run. "
+            "Do NOT give up after one failure.\n\n"
+        )
+        ps_file.write_text(rules + problem_statement)
 
         cmd = [
             sys.executable, "-m", "sweagent", "run",
             "--config", str(sweagent_dir / "config" / "bash_only.yaml"),
-            "--agent.model.name", "hosted_vllm/openai/gpt-oss-120b",
+            "--agent.model.name", model_name,
             "--agent.model.api_base", vllm_url,
             "--agent.model.per_instance_cost_limit", "0",
             "--agent.model.total_cost_limit", "0",
@@ -369,6 +377,8 @@ def main():
     ap.add_argument("--image-repo", default="jefzda/sweap-images")
     ap.add_argument("--local-work-root", default=None,
                     help="Where local deployment puts per-task workdirs")
+    ap.add_argument("--model", default="hosted_vllm/openai/gpt-oss-120b",
+                    help="LiteLLM model id (e.g. hosted_vllm/openai/Qwen3.5-4B)")
     args = ap.parse_args()
 
     if not (args.vllm_url or args.vllm_job):
@@ -429,7 +439,8 @@ def main():
                 f = pool.submit(
                     run_one_task, i, ex["instance_id"], get_image(ex),
                     ex.get("problem_statement", ex.get("problem_text", "")),
-                    vllm_url, output_dir, sweagent_dir, deploy, pf_mgr,
+                    vllm_url, output_dir, sweagent_dir, deploy, args.model,
+                    pf_mgr,
                 )
                 futures[f] = i
             for f in as_completed(futures):

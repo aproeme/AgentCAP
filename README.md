@@ -87,6 +87,47 @@ python scripts/run_hybrid_experiment.py --config configs/hybrid_config.yaml
 2. Implement `Evaluator` (how to judge results)
 3. Both workloads (`single_agent`, `agent_team`) work automatically
 
+## Unified agent CLI: `agent_cap.agents` (v1_beta)
+
+Lightweight, extensible runtime that unifies single-agent and multi-agent
+runs behind one CLI. Auto-routes OpenAI / Harmony (gpt-oss) / mock protocols
+based on model name; vLLM and sglang serving engines are both supported.
+
+```bash
+# Smoke test (no API key)
+python -m agent_cap.agents --mock --strategy plan-execute --task "1+1"
+
+# One model, OpenAI-compatible endpoint
+python -m agent_cap.agents --strategy single \
+  --agent agent=name=Qwen/Qwen2.5-72B-Instruct,base_url=http://localhost:30000/v1,api_key=EMPTY \
+  --dataset imo-answerbench --num-tasks 5 \
+  --tool-backend math-python --evaluator imo \
+  --output-dir results/qwen_imo --resume
+
+# gpt-oss on sglang via harmony protocol
+python -m agent_cap.agents --strategy single \
+  --agent agent=name=gpt-oss-120b,base_url=http://localhost:30000,api_key=EMPTY,engine=sglang \
+  --dataset imo-answerbench --tool-backend math-python --evaluator imo
+
+# LLM as a judge
+python -m agent_cap.agents --strategy single \
+  --agent agent=name=Qwen/Qwen2.5-7B-Instruct,base_url=...,api_key=... \
+  --evaluator llm-judge \
+  --judge "name=gpt-4o,base_url=https://api.openai.com/v1,api_key=$OPENAI_API_KEY"
+```
+
+Full reference under [`docs/agents/`](docs/agents/):
+
+| File | Topic |
+|---|---|
+| [docs/agents/cli.md](docs/agents/cli.md) | All CLI flags and precedence |
+| [docs/agents/yaml.md](docs/agents/yaml.md) | YAML config: agents pool, roles, replicas, share_state, includes |
+| [docs/agents/concepts.md](docs/agents/concepts.md) | Agent, Strategy, Protocol, Tool, Evaluator |
+| [docs/agents/strategies.md](docs/agents/strategies.md) | Built-in strategies in depth: single, plan-execute, supervisor, sequential |
+| [docs/agents/protocols.md](docs/agents/protocols.md) | LLM protocols (openai/harmony/mock), auto-routing, adding new |
+| [docs/agents/serving.md](docs/agents/serving.md) | vLLM / sglang launch commands per model family and tool-parser flags |
+| [docs/agents/extending.md](docs/agents/extending.md) | Recipes for custom strategies, protocols, tools, evaluators |
+
 ## Acknowledgement
 
 This project is supported by the Advanced Research and Invention Agency (ARIA)'s grant "Scaling Compute: AI at 1/1000th the cost. Technical Area 4 Benchmarking".

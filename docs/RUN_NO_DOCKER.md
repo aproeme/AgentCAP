@@ -16,10 +16,11 @@ covers a host that **does not have Docker** but does have:
 - A separate machine (or remote endpoint) actually serving `gpt-oss-120b`
   via vLLM/SGLang. **You are not expected to run the model on this host.**
 
-The agent code lives in **AgentCAP**, branch `sicheng/k8s-benchmark-pipeline`,
-which has the gpt-oss tool-use fixes that any reproduction depends on.
+The agent code lives in **AgentCAP**, branch `v1_beta`, which has the
+gpt-oss tool-use fixes and the unified `agent_cap.agents` runtime that
+any reproduction depends on.
 
-> ⚠️ Critical: do NOT run on a branch that lacks commit `787114f`
+> ⚠️ Critical: do NOT run on a branch that lacks commit `2ef0163`
 > ("Fix gpt-oss tool-use on vLLM/SGLang without server-side parser").
 > Without that fix the model rambles for thousands of tokens per turn and
 > tool-call recovery silently fails.
@@ -28,18 +29,23 @@ which has the gpt-oss tool-use fixes that any reproduction depends on.
 
 ## 0. Required env vars and endpoints
 
+Shell exports for the runner side:
+
 ```bash
 # Already-running model server (any OpenAI-compatible /v1 endpoint)
 export VLLM_URL="http://<your-gpu-host>:30002/v1"
 export MODEL_NAME="openai/gpt-oss-120b"   # whatever --served-model-name is
 
-# MCP tool credentials (only needed for MCP-ATLAS)
-export GITHUB_TOKEN="ghp_..."
-export BRAVE_API_KEY="BSAxk..."
-
 # Modal (only needed for SWE-bench Lite without Docker)
 # After `pip install modal`, run `modal token new` once to authenticate.
 ```
+
+MCP tool credentials (only needed for MCP-ATLAS) live in
+`third_party/mcp-atlas/.env` (gitignored). `mcp-server/start.sh` copies
+`env.template` to `.env` on first run; fill in the keys you need
+(`GITHUB_PERSONAL_ACCESS_TOKEN`, `BRAVE_API_KEY`, `ALCHEMY_API_KEY`, etc.).
+Servers with empty keys still start; they return auth errors only at
+tool-call time.
 
 Sanity check the model server first:
 
@@ -56,7 +62,7 @@ You should see `"id": "openai/gpt-oss-120b"` (or your `--served-model-name`).
 ```bash
 git clone https://github.com/Auto-CAP/AgentCAP.git
 cd AgentCAP
-git checkout sicheng/k8s-benchmark-pipeline
+git checkout v1_beta
 git submodule update --init --recursive   # pulls third_party/mcp-atlas
 pip install -e .
 pip install 'swe-rex>=1.4.0'              # SWE-bench harness
@@ -71,51 +77,26 @@ benchmark. It runs as a separate process; we set it up in §2.
 
 ### 2a. Start the MCP server natively (no Docker)
 
-The Docker image `ghcr.io/scaleapi/mcp-atlas:latest` boils down to:
-
-- a Python `agent-environment` web service on port 1984 (uvicorn)
-- which lazily spawns 22 MCP servers over stdio (mostly Node `npx` and
-  Python `uvx` packages)
-
-Start it directly from the submodule:
-
 ```bash
-cd /path/to/AgentCAP/third_party/mcp-atlas/agent-environment
-uv sync                                   # one-time
-
-# httpx>=0.28 dropped TimeoutError; agent-environment still imports it.
-# Patch via sitecustomize so all subprocesses get the fix:
-python3 -c '
-import site, os
-sc = os.path.join(site.getsitepackages()[0], "sitecustomize.py")
-os.makedirs(os.path.dirname(sc), exist_ok=True)
-open(sc, "w").write(
-    "import httpx\n"
-    "if not hasattr(httpx, \"TimeoutError\"):\n"
-    "    httpx.TimeoutError = httpx.TimeoutException\n"
-)
-print("httpx.TimeoutError patched")
-'
-
-ENABLED_SERVERS="arxiv,brave-search,calculator,cli-mcp-server,clinicaltrialsgov-mcp-server,context7,ddg-search,desktop-commander,fetch,filesystem,git,github,mcp-code-executor,mcp-server-code-runner,memory,met-museum,open-library,osm-mcp-server,pubmed,weather,whois,wikipedia" \
-GITHUB_TOKEN="$GITHUB_TOKEN" \
-BRAVE_API_KEY="$BRAVE_API_KEY" \
-./entrypoint.sh uv run python -m uvicorn agent_environment.main:app \
-    --host 0.0.0.0 --port 1984
+cd /path/to/AgentCAP
+bash mcp-server/start.sh
 ```
 
-The first launch installs all `npx` / `uvx` MCP servers; this can take
-10–20 minutes and a few hundred MB of disk. Subsequent runs are instant.
+This is the docker-free equivalent of `ghcr.io/scaleapi/mcp-atlas:latest`
+(Python 3.12 venv + agent-environment + envsubst + uvicorn). The full
+setup, environment variables, troubleshooting, and concurrency tuning
+live in **[docs/mcp-server.md](mcp-server.md)**.
 
-Leave this running. In another shell, sanity check:
+Leave the server running. In another shell:
 
 ```bash
 curl -s http://localhost:1984/health
+# {"status":"health_and_client_connection_ok"}
 ```
 
-> If `npm` / `uv` cannot be installed on this host, this benchmark cannot
-> be reproduced exactly. The set of 22 servers is what defines the
-> benchmark and dropping any of them changes results.
+> If `npm` / `uv` / `node>=20` cannot be installed on this host, this
+> benchmark cannot be reproduced exactly. The set of MCP servers is
+> what defines the benchmark and dropping any of them changes results.
 
 ### 2b. Run the benchmark
 
@@ -181,13 +162,13 @@ ls /tmp/swe_agent/config/bash_only.yaml
 
 ### 3c. Run the batch
 
-The unified script `k8s/run_sweagent.py` (commit `bf3edc5` on this
+The unified script `scripts/run_sweagent.py` (commit `dfcf2d7` on this
 branch) supports `--deployment {k8s,docker,local,modal}`.
 
 ```bash
 cd /path/to/AgentCAP
 
-python k8s/run_sweagent.py \
+python scripts/run_sweagent.py \
     --deployment modal \
     --dataset swe-bench-lite \
     --task-indices benchmarks/swe_bench_lite_curated_100.json \
@@ -248,7 +229,7 @@ For each completed run, sanity-check:
 1. **Tool-call recovery**: in the trajectory / detailed-results files,
    `tool_calls` should be non-empty for the majority of turns. If
    essentially all are `[]`, the gpt-oss `<|call|>` stop-token recovery
-   is broken — verify you are on the branch with commit `787114f`.
+   is broken — verify you are on the branch with commit `2ef0163`.
 
 2. **Decode token count per turn**: should be 100–500 tokens for
    gpt-oss-120b on agentic tasks. If you see 3000–6000 tokens/turn, the
@@ -271,7 +252,7 @@ For each completed run, sanity-check:
 |---|---|
 | `agent_cap/runner/unified_runner.py` | mcp-atlas + IMO + medagentbench + tau2 + swebench-lite |
 | `agent_cap/runner/llm_client.py` | gpt-oss stop_token + tool-arg cleaning |
-| `k8s/run_sweagent.py` | SWE-bench Lite/Pro batch runner; `--deployment` flag |
+| `scripts/run_sweagent.py` | SWE-bench Lite/Pro batch runner; `--deployment` flag |
 | `third_party/mcp-atlas/` | submodule, the MCP server you start in §2a |
 | `agent_cap/evaluators/gtfa_eval.py` | Gemini judge for mcp-atlas |
 
@@ -305,7 +286,7 @@ For each completed run, sanity-check:
   branch). Pass it via `--task-indices`:
 
   ```bash
-  python k8s/run_sweagent.py --deployment modal \
+  python scripts/run_sweagent.py --deployment modal \
       --dataset swe-bench-lite \
       --task-indices benchmarks/swe_bench_lite_curated_100.json \
       --vllm-url "$VLLM_URL" \

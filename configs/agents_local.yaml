@@ -1,0 +1,18 @@
+strategy: plan-execute
+demo_tools: true
+
+defaults:
+  api_key: EMPTY
+  max_tokens: 16384
+  temperature: 0.0
+  use_streaming: true
+
+agents:
+  planner:
+    name: Qwen/Qwen2.5-72B-Instruct
+    base_url: http://localhost:30000/v1
+  executor:
+    name: Qwen/Qwen2.5-7B-Instruct
+    base_url: http://localhost:30001/v1
+
+task: "Compute (12 + 8) / 4 using the calc tool."
