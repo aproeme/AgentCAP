@@ -16,7 +16,7 @@ HOST_PIP_CACHE_DIR="${HOST_ROOT}/pip_cache"
 
 # Use host physical AMD GPU index here.
 # Example:
-#   GPU_IDS=5 ./run_imo_answerbench_amd_sglang_docker.sh
+#   GPU_IDS=5 scripts/run_imo_answerbench_amd_sglang_docker.sh
 GPU_IDS="${GPU_IDS:-0}"
 
 PORT="${PORT:-8000}"
