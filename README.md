@@ -7,10 +7,8 @@ benchmarks (IMO AnswerBench, MCP-ATLAS, MedAgentBench, FinanceBench, SWE-Bench).
 ## Install
 
 ```bash
-git clone https://github.com/Auto-CAP/AgentCAP.git
+git clone --recurse-submodules https://github.com/Auto-CAP/AgentCAP.git
 cd AgentCAP
-git checkout v1_beta
-git submodule update --init --recursive
 pip install -e .
 ```
 
