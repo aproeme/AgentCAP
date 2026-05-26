@@ -10,6 +10,7 @@ agents:
     name: gpt-oss
     base_url: http://127.0.0.1:30000
     api_key: EMPTY
+    protocol: harmony
     engine: sglang
     max_tokens: 131072
     temperature: 0.0

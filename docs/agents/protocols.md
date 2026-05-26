@@ -8,9 +8,14 @@ agent at run time.
 
 | Name | Auto-pattern | Endpoint API | When to use |
 |---|---|---|---|
-| `openai` (default) | always wins as fallback | `/v1/chat/completions` | OpenAI, OpenRouter, sglang, vLLM (chat mode), Ollama, LM Studio, llama.cpp server, any OpenAI-compatible service. |
-| `harmony` | `(?i)gpt-?oss` | `/v1/completions` with token ids | gpt-oss-120b, gpt-oss-20b, GPT-OSS, gptoss. Encoded via `openai_harmony`. |
+| `openai` (default) | always wins as fallback | `/v1/chat/completions` | OpenAI, OpenRouter, sglang, vLLM (chat mode), Ollama, LM Studio, llama.cpp server, any OpenAI-compatible service. Also: gpt-oss when the engine is launched with `--enable-auto-tool-choice --tool-call-parser gpt_oss` (engine parses tool calls server-side). |
+| `harmony` | opt-in via `protocol: harmony` | vLLM `/completions` or sglang native `/generate`, raw `input_ids` / `output_ids` | gpt-oss when you need client-side Harmony token decoding (multi-stage assistant outputs, precise `reasoning_effort`, IMO-style runs). Mirrors `run_imo_answerbench_5.py`. |
 | `mock` | `(?i)^mock(-\|$)` | none | Offline tests, CI smoke. Activated by `--mock` or model name `mock` / `mock-*`. |
+
+`gpt-oss` no longer auto-routes to `harmony` — modern SGLang/vLLM ship a
+`gpt_oss` tool-call parser, so the default openai path already returns
+parsed `tool_calls`. Set `protocol: harmony` explicitly only when you
+want the raw token-level decode path (e.g. `configs/agents_imo_gptoss_sglang.yaml`).
 
 ## Routing rules
 
@@ -26,9 +31,9 @@ Verify what a name routes to:
 from agent_cap.agents.types import ModelEndpoint
 from agent_cap.agents.llm import resolve_protocol_name
 
-resolve_protocol_name(ModelEndpoint(name="gpt-oss-120b"))            # 'harmony'
-resolve_protocol_name(ModelEndpoint(name="Qwen/Qwen2.5-72B"))        # 'openai'
-resolve_protocol_name(ModelEndpoint(name="my-model", protocol="harmony"))  # 'harmony'
+resolve_protocol_name(ModelEndpoint(name="gpt-oss-120b"))                  # 'openai'  (engine parser)
+resolve_protocol_name(ModelEndpoint(name="gpt-oss-120b", protocol="harmony"))  # 'harmony' (raw token decode)
+resolve_protocol_name(ModelEndpoint(name="Qwen/Qwen2.5-72B"))              # 'openai'
 ```
 
 ## Adding a new protocol

@@ -39,7 +39,7 @@ from agent_cap.agents.llm.registry import register_protocol
 from agent_cap.agents.types import ModelEndpoint, Usage
 
 
-@register_protocol("harmony", model_pattern=r"(?i)gpt-?oss")
+@register_protocol("harmony")
 class HarmonyClient:
     def __init__(self, session: Optional[aiohttp.ClientSession] = None, **_: Any) -> None:
         self._session = session
