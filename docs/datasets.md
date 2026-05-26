@@ -29,13 +29,13 @@ python -m agent_cap.agents \
   --base-url http://localhost:30000/v1 \
   --dataset imo-answerbench \
   --evaluator imo \
-  --tool-backend none \
+  --no-tools \
   --num-tasks 20
 ```
 
 For LLM-judge fallback when `math_verify` fails, set
-`OPENROUTER_API_KEY`. Set `--tool-backend python` to let the agent run
-Python during reasoning.
+`OPENROUTER_API_KEY`. Set `--tool-backend math-python` to let the agent
+run Python during reasoning.
 
 ---
 
