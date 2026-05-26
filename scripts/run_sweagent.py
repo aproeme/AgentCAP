@@ -293,7 +293,16 @@ def run_one_task(task_idx, instance_id, dockerhub_tag, problem_statement,
         task_output = output_dir / f"task_{task_idx:03d}"
         task_output.mkdir(parents=True, exist_ok=True)
         ps_file = task_output / "problem.txt"
-        ps_file.write_text(problem_statement)
+        rules = (
+            "MANDATORY RULES (read carefully before starting):\n"
+            "- Do NOT modify any test files. Only edit source code.\n"
+            "- Do NOT submit until you have run the tests and they all pass.\n"
+            "- If tests fail, keep trying — analyze the error, fix your code, re-run. "
+            "Do NOT give up after one failure.\n"
+            "- ALWAYS write a small reproduce script first to confirm the bug, then "
+            "fix the code, then re-run to confirm it's fixed.\n\n"
+        )
+        ps_file.write_text(rules + problem_statement)
 
         cmd = [
             sys.executable, "-m", "sweagent", "run",
