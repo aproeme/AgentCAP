@@ -298,9 +298,7 @@ def run_one_task(task_idx, instance_id, dockerhub_tag, problem_statement,
             "- Do NOT modify any test files. Only edit source code.\n"
             "- Do NOT submit until you have run the tests and they all pass.\n"
             "- If tests fail, keep trying — analyze the error, fix your code, re-run. "
-            "Do NOT give up after one failure.\n"
-            "- ALWAYS write a small reproduce script first to confirm the bug, then "
-            "fix the code, then re-run to confirm it's fixed.\n\n"
+            "Do NOT give up after one failure.\n\n"
         )
         ps_file.write_text(rules + problem_statement)
 
