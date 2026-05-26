@@ -16,7 +16,9 @@ pip install -e .
 
 ## Quickstart
 
-Serve a model (any OpenAI-compatible engine):
+### Tool-use benchmark — MCP-ATLAS on Qwen3.5
+
+Serve the model with tool-call parser:
 
 ```bash
 vllm serve Qwen/Qwen3.5-4B \
@@ -26,26 +28,15 @@ vllm serve Qwen/Qwen3.5-4B \
   --enable-auto-tool-choice --tool-call-parser qwen3_coder
 ```
 
-Run a benchmark:
+Start the MCP tool server (in another terminal):
 
 ```bash
-# Math reasoning — no tools needed
-python -m agent_cap.agents \
-  --strategy single \
-  --model openai/Qwen3.5-4B \
-  --base-url http://localhost:30000/v1 \
-  --api-key dummy \
-  --dataset imo-answerbench \
-  --evaluator imo \
-  --no-tools \
-  --num-tasks 20 \
-  --output-dir results/imo
+bash mcp-server/start.sh
 ```
 
-```bash
-# Tool use — start MCP server in another terminal
-bash mcp-server/start.sh
+Run the benchmark:
 
+```bash
 python -m agent_cap.agents \
   --strategy single \
   --model openai/Qwen3.5-4B \
@@ -58,7 +49,22 @@ python -m agent_cap.agents \
   --output-dir results/mcp
 ```
 
-Mock mode (no LLM, no GPU — for sanity checks):
+### Reasoning benchmark — IMO AnswerBench via Harmony (gpt-oss)
+
+For models that need client-side Harmony token decoding (gpt-oss family +
+fine-grained `reasoning_effort`), use the bundled config:
+
+```bash
+python -m agent_cap.agents --config configs/agents_imo_gptoss_sglang.yaml
+```
+
+That config sets `protocol: harmony`, `engine: sglang`, and points at a local
+sglang server. See [docs/agents/protocols.md](docs/agents/protocols.md) for
+when to opt into Harmony vs. the default OpenAI-compatible path.
+
+### Mock mode
+
+No LLM, no GPU — sanity check the framework:
 
 ```bash
 python -m agent_cap.agents --mock --strategy plan-execute --task "compute 1+1"
