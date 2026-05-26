@@ -16,16 +16,9 @@ covers a host that **does not have Docker** but does have:
 - A separate machine (or remote endpoint) actually serving `gpt-oss-120b`
   via vLLM/SGLang. **You are not expected to run the model on this host.**
 
-The agent code lives in **AgentCAP**, branch `v1_beta`, which has the
-gpt-oss tool-use fixes and the unified `agent_cap.agents` runtime that
-any reproduction depends on.
-
-> ⚠️ Critical: do NOT run on a branch that lacks commit `2ef0163`
-> ("Fix gpt-oss tool-use on vLLM/SGLang without server-side parser").
-> Without that fix the model rambles for thousands of tokens per turn and
-> tool-call recovery silently fails.
-
----
+The agent code lives in **AgentCAP** `main`, which has the gpt-oss
+tool-use fixes and the unified `agent_cap.agents` runtime that any
+reproduction depends on.
 
 ## 0. Required env vars and endpoints
 
@@ -60,10 +53,8 @@ You should see `"id": "openai/gpt-oss-120b"` (or your `--served-model-name`).
 ## 1. Clone and install AgentCAP
 
 ```bash
-git clone https://github.com/Auto-CAP/AgentCAP.git
+git clone --recurse-submodules https://github.com/Auto-CAP/AgentCAP.git
 cd AgentCAP
-git checkout v1_beta
-git submodule update --init --recursive   # pulls third_party/mcp-atlas
 pip install -e .
 pip install 'swe-rex>=1.4.0'              # SWE-bench harness
 ```
@@ -229,7 +220,8 @@ For each completed run, sanity-check:
 1. **Tool-call recovery**: in the trajectory / detailed-results files,
    `tool_calls` should be non-empty for the majority of turns. If
    essentially all are `[]`, the gpt-oss `<|call|>` stop-token recovery
-   is broken — verify you are on the branch with commit `2ef0163`.
+   is broken — make sure you're on a recent `main` (the fix lives in
+   `agent_cap.runner.llm_client._stream_chat_completion_harmony`).
 
 2. **Decode token count per turn**: should be 100–500 tokens for
    gpt-oss-120b on agentic tasks. If you see 3000–6000 tokens/turn, the
