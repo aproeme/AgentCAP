@@ -84,6 +84,7 @@ class HarmonyClient:
             ReasoningEffort,
             Role,
             SystemContent,
+            ToolDescription,
             ToolNamespaceConfig,
         )
 
@@ -93,7 +94,7 @@ class HarmonyClient:
             reasoning_effort=ReasoningEffort.HIGH
         )
         if tools:
-            tool_cfg = _harmony_tool_config(tools, ToolNamespaceConfig)
+            tool_cfg = _harmony_tool_config(tools, ToolNamespaceConfig, ToolDescription)
             if tool_cfg is not None:
                 sys_content = sys_content.with_tools(tool_cfg)
 
@@ -258,16 +259,33 @@ class HarmonyClient:
             return json.loads(text)
 
 
-def _harmony_tool_config(tools: List[Dict[str, Any]], ToolNamespaceConfig: Any) -> Any:
+def _harmony_tool_config(
+    tools: List[Dict[str, Any]],
+    ToolNamespaceConfig: Any,
+    ToolDescription: Any,
+) -> Any:
     if not tools:
         return None
-    first = tools[0].get("function") or {}
-    name = first.get("name") or "python"
-    desc = first.get("description") or (
-        "Use this tool to execute the necessary action. "
-        "Always finalize with an ANSWER line."
-    )
-    return ToolNamespaceConfig(name=name, description=desc, tools=[])
+    descs = []
+    for t in tools:
+        fn = (t or {}).get("function") or {}
+        name = str(fn.get("name") or "")
+        if not name:
+            continue
+        descs.append(
+            ToolDescription(
+                name=name,
+                description=str(fn.get("description") or ""),
+                parameters=fn.get("parameters") or {},
+            )
+        )
+    if not descs:
+        return None
+    if len(descs) == 1 and descs[0].name == "python":
+        return ToolNamespaceConfig(
+            name="python", description=descs[0].description, tools=[]
+        )
+    return ToolNamespaceConfig(name="functions", description="", tools=descs)
 
 
 def _decode_harmony_response(
