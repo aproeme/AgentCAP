@@ -115,7 +115,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                    help="JSONL file of tasks. Each line: {task_id, user_prompt, ...}")
     p.add_argument("--max-turns", type=int, default=None,
                    help="Max tool-use turns per agent run (default: YAML "
-                        "`max_turns` or 8 if absent)")
+                        "`max_turns` or 20 if absent — matches official mcp-atlas)")
     p.add_argument("--sequence", type=str, default=None,
                    help="For --strategy sequential: comma-separated role order")
     p.add_argument("--mock", action="store_true",
@@ -428,7 +428,7 @@ async def _run_async(args: argparse.Namespace) -> int:
             return 2
 
     strategy = _instantiate_strategy(args)
-    strategy.max_turns = int(args.max_turns if args.max_turns is not None else config_data.get("max_turns", 8))
+    strategy.max_turns = int(args.max_turns if args.max_turns is not None else config_data.get("max_turns", 20))
     tasks = _load_tasks(args, config_data)
 
     evaluator_name = args.evaluator or config_data.get("evaluator")
@@ -468,6 +468,10 @@ async def _run_async(args: argparse.Namespace) -> int:
                         results.append(done[task.task_id])
                         _emit_progress(i, task, done[task.task_id])
                         continue
+                    if hasattr(tools, "set_task_allowlist"):
+                        unified = (task.metadata or {}).get("_unified_task")
+                        et = getattr(unified, "enabled_tools", None) if unified else None
+                        tools.set_task_allowlist(et)
                     agents = _build_agents(
                         specs, llm, tools,
                         session=sess, force_mock=args.mock,

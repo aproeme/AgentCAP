@@ -11,7 +11,11 @@ from agent_cap.agents.tools import ToolProvider
 
 
 class MCPProviderAdapter:
-    """Wraps `agent_cap.runner.tool_backends.MCPToolBackend` as a ToolProvider."""
+    """Wraps `agent_cap.runner.tool_backends.MCPToolBackend` as a ToolProvider.
+
+    `set_task_allowlist` filters `list_tools()` output per task to match
+    official mcp-atlas behavior (see sandbox_client.py L44-47 in scaleapi/mcp-atlas).
+    """
 
     def __init__(
         self,
@@ -27,6 +31,16 @@ class MCPProviderAdapter:
             enabled_tools=enabled_tools or [],
         )
         self._setup_done = False
+        self._task_allowlist: Optional[set] = None
+
+    def set_task_allowlist(self, enabled_tools: Optional[List[Any]]) -> None:
+        if not enabled_tools:
+            self._task_allowlist = None
+            return
+        self._task_allowlist = {
+            t if isinstance(t, str) else (t.get("name", "") if isinstance(t, dict) else "")
+            for t in enabled_tools
+        }
 
     async def _ensure_setup(self) -> None:
         if not self._setup_done:
@@ -37,7 +51,13 @@ class MCPProviderAdapter:
 
     async def list_tools(self) -> List[Dict[str, Any]]:
         await self._ensure_setup()
-        return await self._backend.list_tools()
+        tools = await self._backend.list_tools()
+        if self._task_allowlist is not None:
+            tools = [
+                t for t in tools
+                if t.get("function", {}).get("name", "") in self._task_allowlist
+            ]
+        return tools
 
     async def call(self, name: str, arguments: Dict[str, Any]) -> str:
         await self._ensure_setup()
