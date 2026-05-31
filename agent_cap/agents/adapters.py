@@ -92,13 +92,23 @@ def load_dataset_as_tasks(name: str, num_tasks: int = 0) -> List[Dict[str, Any]]
     for t in raw:
         msgs = list(getattr(t, "messages", []) or [])
         prompt = ""
-        if msgs:
-            prompt = str(msgs[-1].get("content", ""))
-        out.append({
+        for m in reversed(msgs):
+            if m.get("role") == "user":
+                prompt = str(m.get("content", ""))
+                break
+        system_prompt = ""
+        for m in msgs:
+            if m.get("role") == "system":
+                system_prompt = str(m.get("content", ""))
+                break
+        entry: Dict[str, Any] = {
             "task_id": getattr(t, "task_id", "") or f"task-{len(out)}",
             "user_prompt": prompt,
             "_unified_task": t,
-        })
+        }
+        if system_prompt:
+            entry["system_prompt"] = system_prompt
+        out.append(entry)
     return out
 
 

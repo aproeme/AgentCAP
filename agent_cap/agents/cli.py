@@ -476,6 +476,13 @@ async def _run_async(args: argparse.Namespace) -> int:
                         specs, llm, tools,
                         session=sess, force_mock=args.mock,
                     )
+                    task_sys = (task.metadata or {}).get("system_prompt") or ""
+                    if task_sys:
+                        for ag in agents.values():
+                            if not ag.state.messages or ag.state.messages[0].get("role") != "system":
+                                ag.state.messages.insert(0, {"role": "system", "content": task_sys})
+                            else:
+                                ag.state.messages[0] = {"role": "system", "content": task_sys}
                     try:
                         run_res = await strategy.run(task, agents, tools)
                         row = _serialize_result(run_res, args.verbose)
