@@ -476,13 +476,27 @@ async def _run_async(args: argparse.Namespace) -> int:
                         specs, llm, tools,
                         session=sess, force_mock=args.mock,
                     )
-                    run_res = await strategy.run(task, agents, tools)
-                    row = _serialize_result(run_res, args.verbose)
-                    if evaluator is not None:
-                        ev = evaluator.evaluate(_eval_meta(task), run_res.output_text)
+                    try:
+                        run_res = await strategy.run(task, agents, tools)
+                        row = _serialize_result(run_res, args.verbose)
+                    except Exception as exc:
+                        row = {
+                            "task_id": task.task_id,
+                            "strategy": args.strategy,
+                            "output_text": "",
+                            "e2e_latency_s": 0.0,
+                            "errors": [f"{type(exc).__name__}: {exc}"[:500]],
+                            "num_turns": 0,
+                        }
+                    if evaluator is not None and not row.get("errors"):
+                        ev = evaluator.evaluate(_eval_meta(task), row.get("output_text", "") or "")
                         row["eval_passed"] = ev.passed
                         row["eval_score"] = ev.score
                         row["eval_details"] = ev.details
+                    elif row.get("errors"):
+                        row["eval_passed"] = False
+                        row["eval_score"] = 0.0
+                        row["eval_details"] = {"evaluator": "skipped", "reason": "task errored"}
                     if res_f:
                         res_f.write(json.dumps(row, ensure_ascii=False) + "\n")
                         res_f.flush()
