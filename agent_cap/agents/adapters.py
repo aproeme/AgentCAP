@@ -61,7 +61,10 @@ class MCPProviderAdapter:
 
     async def call(self, name: str, arguments: Dict[str, Any]) -> str:
         await self._ensure_setup()
-        result = await self._backend.call_tool(name, arguments)
+        try:
+            result = await self._backend.call_tool(name, arguments)
+        except Exception as exc:
+            return f"ERROR: tool '{name}' failed: {exc}"
         if isinstance(result, list):
             parts = []
             for blk in result:
