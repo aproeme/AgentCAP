@@ -1525,30 +1525,10 @@ def _load_dataset_tasks(
             prompt = (
                 "MANDATORY RULES (read carefully before starting):\n"
                 "- Do NOT modify any test files. Only edit source code.\n"
-                "- Do NOT run tests until AFTER you have edited the source code.\n"
                 "- Do NOT submit until you have run the tests and they all pass.\n"
-                "- If tests fail, keep trying — analyze the error, fix your code, re-run. Do NOT give up after one failure.\n"
-                "- Do NOT spend too many turns just reading files. Quickly identify the relevant code, then make your edit.\n"
-                "- ALWAYS write a small reproduce script first to confirm the bug, then fix the code, then re-run to confirm it's fixed.\n"
-                "- If your fix causes a new error (e.g. AttributeError, wrong order of initialization), READ the traceback carefully and adjust. Pay attention to the order of operations in __init__ methods.\n\n"
-                f"<uploaded_files>\n{working_dir}\n</uploaded_files>\n"
-                f"I've uploaded a python code repository in the directory {working_dir}. "
-                "Consider the following PR description:\n\n"
-                f"<pr_description>\n{problem.strip()}\n</pr_description>\n\n"
-                "Can you help me implement the necessary changes to the repository "
-                "so that the requirements specified in the <pr_description> are met?\n"
-                "I've already taken care of all changes to any of the test files described "
-                "in the <pr_description>. This means you DON'T have to modify the testing "
-                "logic or any of the tests in any way!\n"
-                f"Your task is to make the minimal changes to non-tests files in the {working_dir} "
-                "directory to ensure the <pr_description> is satisfied.\n"
-                "Follow these steps to resolve the issue:\n"
-                "1. As a first step, it might be a good idea to find and read code relevant to the <pr_description>\n"
-                "2. Create a script to reproduce the error and execute it with `python <filename.py>` using the bash tool, to confirm the error\n"
-                "3. Edit the sourcecode of the repo to resolve the issue\n"
-                "4. Rerun your reproduce script and confirm that the error is fixed!\n"
-                "5. Think about edgecases and make sure your fix handles them as well\n"
-                "Your thinking should be thorough and so it's fine if it's very long.\n"
+                "- If tests fail, keep trying — analyze the error, fix your code, re-run. "
+                "Do NOT give up after one failure.\n\n"
+                + problem
             )
 
             # Add per-repo test verification instruction

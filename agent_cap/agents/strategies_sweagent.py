@@ -94,7 +94,11 @@ class SWEAgentStrategy(Strategy):
             image = f"docker.io/{image_repo or 'swebench'}:{image}"
 
         ps_file = task_dir / "problem.txt"
-        ps_file.write_text(task.user_prompt)
+        prompt = task.user_prompt
+        cut = prompt.find("\n========== VERIFICATION")
+        if cut > 0:
+            prompt = prompt[:cut].rstrip() + "\n"
+        ps_file.write_text(prompt)
 
         traj_dir = task_dir / "sweagent_traj"
         traj_dir.mkdir(parents=True, exist_ok=True)
