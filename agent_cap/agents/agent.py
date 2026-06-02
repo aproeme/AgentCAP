@@ -66,6 +66,8 @@ class Agent:
             tool_calls=list(reply.assistant.get("tool_calls") or []),
             usage=reply.usage,
             latency_s=reply.latency_s,
+            ttft_s=getattr(reply, "ttft_s", 0.0) or 0.0,
+            decode_s=getattr(reply, "decode_s", 0.0) or 0.0,
         )
         self.state.turns.append(record)
         return record

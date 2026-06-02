@@ -59,11 +59,17 @@ class OpenAIChatClient:
         usage_raw = resp.get("usage") or {}
         usage = Usage(
             input_tokens=_to_int(usage_raw.get("prompt_tokens", timed.input_tokens)),
-            output_tokens=_to_int(usage_raw.get("completion_tokens", timed.output_tokens)),
+            output_tokens=timed.output_tokens,
+            completion_tokens=timed.completion_tokens,
+            reasoning_tokens=timed.reasoning_tokens,
             cached_tokens=_to_int(usage_raw.get("cached_tokens", timed.cached_tokens)),
             requests=1,
         )
-        return LLMReply(assistant=assistant, usage=usage, latency_s=elapsed, raw=resp)
+        return LLMReply(
+            assistant=assistant, usage=usage, latency_s=elapsed, raw=resp,
+            ttft_s=getattr(timed, "ttft_seconds", 0.0) or 0.0,
+            decode_s=getattr(timed, "decode_seconds", 0.0) or 0.0,
+        )
 
 
 __all__ = ["OpenAIChatClient"]

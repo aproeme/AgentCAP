@@ -383,7 +383,9 @@ async def run_single_example(
         result = timed.response_json
         usage = result.get("usage") or {}
         in_tok = _to_int(usage.get("prompt_tokens", timed.input_tokens))
-        out_tok = _to_int(usage.get("completion_tokens", timed.output_tokens))
+        out_tok = timed.output_tokens or _to_int(usage.get("completion_tokens", 0))
+        visible_tok = timed.completion_tokens or out_tok
+        reasoning_tok = timed.reasoning_tokens
         cached_tok = _to_int(usage.get("cached_tokens", timed.cached_tokens))
         if cached_tok == 0:
             cached_tok = _extract_cached_tokens(usage)
@@ -434,6 +436,8 @@ async def run_single_example(
             "request_index": request_index,
             "input_tokens": in_tok,
             "output_tokens": out_tok,
+            "completion_tokens": visible_tok,
+            "reasoning_tokens": reasoning_tok,
             "cached_tokens": cached_tok,
             "prefill_time_s": round(timed.ttft_seconds, 6),
             "decode_time_s": round(timed.decode_seconds, 6),

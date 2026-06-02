@@ -12,6 +12,8 @@ class LLMReply:
     usage: Usage
     latency_s: float
     raw: Dict[str, Any]
+    ttft_s: float = 0.0
+    decode_s: float = 0.0
 
 
 class LLMClient(Protocol):

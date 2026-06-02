@@ -16,6 +16,8 @@ class ChatCompletionTimedResult:
     decode_seconds: float
     input_tokens: int = 0
     output_tokens: int = 0
+    completion_tokens: int = 0
+    reasoning_tokens: int = 0
     cached_tokens: int = 0
     is_streaming: bool = False
 
@@ -459,15 +461,45 @@ async def chat_completion_streaming(
     }
 
     cached_tokens = _extract_cached_tokens(usage)
+
+    ctd = usage.get("completion_tokens_details") or {}
+    reasoning_tokens = _to_int(ctd.get("reasoning_tokens", 0))
+    sglang_style = False
+    if reasoning_tokens == 0 and usage.get("reasoning_tokens") is not None:
+        reasoning_tokens = _to_int(usage.get("reasoning_tokens", 0))
+        sglang_style = True
+    if reasoning_tokens == 0 and collected_reasoning_content:
+        try:
+            import tiktoken
+            reasoning_tokens = len(
+                tiktoken.get_encoding("o200k_harmony").encode(collected_reasoning_content)
+            )
+            sglang_style = True
+        except Exception:
+            reasoning_tokens = max(1, len(collected_reasoning_content) // 4)
+            sglang_style = True
+
+    raw_completion = _to_int(usage.get("completion_tokens", 0))
+    if sglang_style and raw_completion >= reasoning_tokens:
+        visible_completion = raw_completion - reasoning_tokens
+        total_output = raw_completion
+    else:
+        visible_completion = raw_completion
+        total_output = raw_completion + reasoning_tokens
+
     if isinstance(response_json.get("usage"), dict):
         response_json["usage"]["cached_tokens"] = cached_tokens
+        response_json["usage"]["reasoning_tokens"] = reasoning_tokens
+        response_json["usage"]["visible_completion_tokens"] = visible_completion
 
     return ChatCompletionTimedResult(
         response_json=response_json,
         ttft_seconds=ttft,
         decode_seconds=decode_time,
         input_tokens=_to_int(usage.get("prompt_tokens", 0)),
-        output_tokens=_to_int(usage.get("completion_tokens", 0)),
+        output_tokens=total_output,
+        completion_tokens=visible_completion,
+        reasoning_tokens=reasoning_tokens,
         cached_tokens=cached_tokens,
         is_streaming=True,
     )
