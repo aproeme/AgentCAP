@@ -170,9 +170,25 @@ class HarmonyClient:
         )
 
         usage_raw = raw.get("usage") or {}
+        _ctd = usage_raw.get("completion_tokens_details") or {}
+        _reasoning = int(_ctd.get("reasoning_tokens") or 0)
+        _top_r = usage_raw.get("reasoning_tokens")
+        _sglang_style = False
+        if _top_r is not None and _reasoning == 0:
+            _reasoning = int(_top_r or 0)
+            _sglang_style = True
+        _raw_comp = int(usage_raw.get("completion_tokens", usage_out) or usage_out)
+        if _sglang_style and _raw_comp >= _reasoning:
+            _visible = _raw_comp - _reasoning
+            _total_out = _raw_comp
+        else:
+            _visible = _raw_comp
+            _total_out = _raw_comp + _reasoning
         usage = Usage(
             input_tokens=int(usage_raw.get("prompt_tokens", usage_in) or usage_in),
-            output_tokens=int(usage_raw.get("completion_tokens", usage_out) or usage_out),
+            output_tokens=_total_out,
+            completion_tokens=_visible,
+            reasoning_tokens=_reasoning,
             cached_tokens=int(
                 (usage_raw.get("prompt_tokens_details") or {}).get("cached_tokens", 0) or 0
             ),

@@ -65,21 +65,31 @@ if ! docker ps --format '{{.Names}}' | grep -q '^mcp-atlas$'; then
         "$IMAGE" >/dev/null
     echo "  waiting for :1984 ..."
     for i in {1..90}; do
-        curl -sS -m 2 -o /dev/null http://localhost:1984/tools/list 2>/dev/null && break
+        curl -sS -m 2 -o /dev/null http://localhost:1984/list-tools 2>/dev/null && break
         sleep 2
     done
 fi
-curl -sS -m 5 -o /dev/null -w "  http://localhost:1984/tools/list  ->  %{http_code}\n" http://localhost:1984/tools/list || {
+curl -sS -m 5 -o /dev/null -w "  http://localhost:1984/list-tools  ->  %{http_code}\n" http://localhost:1984/list-tools || {
     echo "ERROR: docker mcp-atlas failed to start"
     docker logs mcp-atlas 2>&1 | tail -20
     exit 1
 }
 
-echo "== Running MCP-Atlas 60-task free subset =="
+echo "== Running MCP-Atlas 60-task free subset (unified CLI) =="
 mkdir -p "$OUTPUT_DIR"
-python -m agent_cap.cli mcp-atlas configs/mcp_atlas_60.yaml \
-    --free-only --base-url "$LLM_URL" \
+python -m agent_cap.agents \
+    --strategy single \
+    --model unsloth/gpt-oss-120b \
+    --base-url "$LLM_URL/v1" \
+    --api-key dummy \
+    --use-streaming \
+    --dataset mcp-atlas \
+    --num-tasks 60 \
+    --evaluator gtfa \
+    --tool-backend mcp \
     --mcp-server-url http://localhost:1984 \
+    --max-turns 20 \
+    --output-dir "$OUTPUT_DIR" \
     2>&1 | tee "$OUTPUT_DIR/run.log"
 
 echo "== Done. Results: $OUTPUT_DIR/results.jsonl =="

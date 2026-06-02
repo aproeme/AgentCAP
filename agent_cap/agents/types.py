@@ -86,12 +86,16 @@ class AgentSpec:
 class Usage:
     input_tokens: int = 0
     output_tokens: int = 0
+    completion_tokens: int = 0
+    reasoning_tokens: int = 0
     cached_tokens: int = 0
     requests: int = 0
 
     def add(self, other: "Usage") -> None:
         self.input_tokens += other.input_tokens
         self.output_tokens += other.output_tokens
+        self.completion_tokens += other.completion_tokens
+        self.reasoning_tokens += other.reasoning_tokens
         self.cached_tokens += other.cached_tokens
         self.requests += other.requests
 
@@ -108,6 +112,8 @@ class TurnRecord:
     tool_results: List[Dict[str, Any]] = field(default_factory=list)
     usage: Usage = field(default_factory=Usage)
     latency_s: float = 0.0
+    ttft_s: float = 0.0
+    decode_s: float = 0.0
 
 
 @dataclass
@@ -140,6 +146,8 @@ class RunResult:
                 role: {
                     "input_tokens": u.input_tokens,
                     "output_tokens": u.output_tokens,
+                    "completion_tokens": u.completion_tokens,
+                    "reasoning_tokens": u.reasoning_tokens,
                     "cached_tokens": u.cached_tokens,
                     "requests": u.requests,
                 }
@@ -148,11 +156,30 @@ class RunResult:
             "total_usage": {
                 "input_tokens": self.total_usage.input_tokens,
                 "output_tokens": self.total_usage.output_tokens,
+                "completion_tokens": self.total_usage.completion_tokens,
+                "reasoning_tokens": self.total_usage.reasoning_tokens,
                 "cached_tokens": self.total_usage.cached_tokens,
                 "requests": self.total_usage.requests,
             },
             "errors": list(self.errors),
-            "num_turns": len(self.turns),
+            "num_turns": (
+                len(self.turns) if self.turns
+                else int(self.extras.get("num_turns") or self.total_usage.requests or 0)
+            ),
+            "tool_calls": (
+                sum(len(t.tool_calls) for t in self.turns) if self.turns
+                else int(self.extras.get("tool_calls") or 0)
+            ),
+            "ttft_ms": (
+                (self.turns[0].ttft_s * 1000.0) if self.turns
+                else float(self.extras.get("ttft_ms_first") or self.extras.get("ttft_ms") or 0.0)
+            ),
+            "tpot_ms": (
+                (sum(t.decode_s for t in self.turns) * 1000.0)
+                / max(1, self.total_usage.output_tokens)
+            ) if self.turns and self.total_usage.output_tokens > 0
+            else float(self.extras.get("tpot_ms") or 0.0),
+            "latency_ms": self.e2e_latency_s * 1000.0,
             "extras": dict(self.extras),
         }
 

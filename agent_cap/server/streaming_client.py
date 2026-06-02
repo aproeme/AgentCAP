@@ -44,6 +44,10 @@ class StreamingChatResponse:
     tpot_ms_avg: float
     tpot_ms_p99: float
     model: str
+    completion_tokens: int = 0
+    reasoning_tokens: int = 0
+    cached_tokens: int = 0
+    reasoning_content: str = ""
     tool_call_count: int = 0
     itl: List[float] = field(default_factory=list)
     token_timestamps: List[float] = field(default_factory=list)
@@ -187,12 +191,16 @@ class StreamingChatClient:
             payload["stop_token_ids"] = stop_token_ids
 
         content_parts: List[str] = []
+        reasoning_parts: List[str] = []
         raw_chunks: List[Dict[str, Any]] = []
         itl: List[float] = []
         tool_call_fragments: Dict[int, Dict[str, str]] = {}
 
         input_tokens = 0
         output_tokens = 0
+        reasoning_tokens = 0
+        cached_tokens = 0
+        sglang_style = False
         total_tokens = 0
         st = time.perf_counter()
         resp_model = model
@@ -271,6 +279,18 @@ class StreamingChatClient:
                                             "total_tokens", input_tokens + output_tokens
                                         )
                                     )
+                                    _ctd = usage.get("completion_tokens_details") or {}
+                                    reasoning_tokens = int(
+                                        _ctd.get("reasoning_tokens") or 0
+                                    )
+                                    _top_r = usage.get("reasoning_tokens")
+                                    if _top_r is not None and reasoning_tokens == 0:
+                                        reasoning_tokens = int(_top_r or 0)
+                                        sglang_style = True
+                                    _pd = usage.get("prompt_tokens_details") or {}
+                                    cached_tokens = int(
+                                        _pd.get("cached_tokens") or 0
+                                    )
                                     most_recent_timestamp = timestamp
                                     continue
 
@@ -287,9 +307,9 @@ class StreamingChatClient:
                                     content_parts.append(content_piece)
                                     has_output = True
 
-                                if delta.get("reasoning_content") or delta.get(
-                                    "reasoning"
-                                ):
+                                _rc = delta.get("reasoning_content") or delta.get("reasoning")
+                                if _rc:
+                                    reasoning_parts.append(_rc)
                                     has_output = True
 
                                 tc_deltas = delta.get("tool_calls")
@@ -366,15 +386,33 @@ class StreamingChatClient:
             else time.perf_counter() - st
         )
 
-        tpot_avg = _mean(itl) * 1000 if itl else 0.0
-        tpot_p99 = _compute_percentile([x * 1000 for x in itl], 99)
+        reasoning_text = "".join(reasoning_parts)
+        if reasoning_tokens == 0 and reasoning_text:
+            try:
+                import tiktoken
+                reasoning_tokens = len(
+                    tiktoken.get_encoding("o200k_harmony").encode(reasoning_text)
+                )
+                sglang_style = True
+            except Exception:
+                reasoning_tokens = max(1, len(reasoning_text) // 4)
+                sglang_style = True
 
-        # Fallback: use formula if aiohttp still batched (shouldn't happen)
-        if tpot_avg == 0.0 and output_tokens > 1 and ttft > 0:
+        if sglang_style and output_tokens >= reasoning_tokens:
+            completion_tokens = output_tokens - reasoning_tokens
+            total_out = output_tokens
+        else:
+            completion_tokens = output_tokens
+            total_out = output_tokens + reasoning_tokens
+
+        tpot_per_token_ms = (sum(itl) * 1000 / total_out) if total_out > 0 else 0.0
+        tpot_chunk_p99 = _compute_percentile([x * 1000 for x in itl], 99)
+
+        if tpot_per_token_ms == 0.0 and total_out > 1 and ttft > 0:
             decode_s = latency - ttft
             if decode_s > 0:
-                tpot_avg = (decode_s / (output_tokens - 1)) * 1000
-                tpot_p99 = tpot_avg
+                tpot_per_token_ms = (decode_s / (total_out - 1)) * 1000
+                tpot_chunk_p99 = tpot_per_token_ms
 
         tool_call_count = len(tool_call_fragments)
         finish_reason = ""
@@ -388,12 +426,16 @@ class StreamingChatClient:
         return StreamingChatResponse(
             content="".join(content_parts),
             input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            total_tokens=total_tokens,
+            output_tokens=total_out,
+            total_tokens=input_tokens + total_out,
+            completion_tokens=completion_tokens,
+            reasoning_tokens=reasoning_tokens,
+            cached_tokens=cached_tokens,
+            reasoning_content=reasoning_text,
             latency_ms=latency * 1000,
             ttft_ms=ttft * 1000,
-            tpot_ms_avg=tpot_avg,
-            tpot_ms_p99=tpot_p99,
+            tpot_ms_avg=tpot_per_token_ms,
+            tpot_ms_p99=tpot_chunk_p99,
             model=resp_model,
             tool_call_count=tool_call_count,
             itl=[x * 1000 for x in itl],

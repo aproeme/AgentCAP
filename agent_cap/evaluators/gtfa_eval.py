@@ -61,7 +61,7 @@ class GTFAEvaluator(Evaluator):
         judge_api_key: Optional[str] = None,
         pass_threshold: float = 0.75,
     ):
-        self.judge_model = judge_model or os.environ.get("EVAL_LLM_MODEL") or "google/gemini-2.5-pro"
+        self.judge_model = judge_model or os.environ.get("EVAL_LLM_MODEL") or "google/gemini-3.1-flash-lite"
         self.judge_base_url = (
             judge_base_url or os.environ.get("EVAL_LLM_BASE_URL")
             or "https://openrouter.ai/api/v1"

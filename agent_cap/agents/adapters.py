@@ -82,12 +82,20 @@ class MCPProviderAdapter:
             pass
 
 
-def load_dataset_as_tasks(name: str, num_tasks: int = 0) -> List[Dict[str, Any]]:
+def load_dataset_as_tasks(
+    name: str,
+    num_tasks: int = 0,
+    indices: Optional[List[int]] = None,
+) -> List[Dict[str, Any]]:
     """Use unified_runner's dataset loader; convert UnifiedTask to plain dicts
-    that `agents.Task.from_dict` can consume."""
+    that `agents.Task.from_dict` can consume.
+
+    indices: explicit dataset row indices (e.g. curated-100); when given,
+    overrides num_tasks and bypasses the loader's free-only / domain filters.
+    """
     from agent_cap.runner.unified_runner import _load_dataset_tasks
 
-    raw = _load_dataset_tasks(name, int(num_tasks or 0))
+    raw = _load_dataset_tasks(name, int(num_tasks or 0), indices=indices)
     out: List[Dict[str, Any]] = []
     for t in raw:
         msgs = list(getattr(t, "messages", []) or [])

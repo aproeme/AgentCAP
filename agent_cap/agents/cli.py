@@ -131,6 +131,19 @@ def _build_arg_parser() -> argparse.ArgumentParser:
                    help="MCP server URL for --tool-backend mcp")
     p.add_argument("--dataset", default=None,
                    help="Dataset name passed to unified_runner._load_dataset_tasks")
+    p.add_argument("--task-indices", default=None,
+                   help="Path to JSON file with 'indices' or 'new_indices' key, "
+                        "or comma-separated dataset row indices. Overrides --num-tasks.")
+    p.add_argument("--concurrency", type=int, default=1,
+                   help="Number of tasks to run in parallel (default: 1)")
+    p.add_argument("--sweagent-deployment", default="docker",
+                   help="For --strategy sweagent: docker|modal|local|k8s")
+    p.add_argument("--sweagent-dir", default="/tmp/swe_agent",
+                   help="Path to swe-agent checkout (for --strategy sweagent)")
+    p.add_argument("--sweagent-image-repo", default="",
+                   help="Docker image registry prefix; empty = local sweb.eval images")
+    p.add_argument("--sweagent-call-limit", type=int, default=200,
+                   help="--agent.model.per_instance_call_limit passed to sweagent")
     p.add_argument("--num-tasks", type=int, default=0,
                    help="Cap dataset tasks at N (0 = all)")
     p.add_argument("--evaluator", default=None,
@@ -377,7 +390,18 @@ def _load_tasks(args: argparse.Namespace, config: Dict[str, Any]) -> List[Task]:
         from agent_cap.agents.adapters import load_dataset_as_tasks
 
         n = int(args.num_tasks or config.get("num_tasks") or 0)
-        tasks.extend(Task.from_dict(d) for d in load_dataset_as_tasks(str(dataset), n))
+        indices_spec = args.task_indices or config.get("task_indices")
+        indices: Optional[List[int]] = None
+        if indices_spec:
+            if str(indices_spec).endswith(".json"):
+                spec = json.loads(Path(indices_spec).read_text())
+                indices = list(spec.get("indices") or spec.get("new_indices") or [])
+            else:
+                indices = [int(x) for x in str(indices_spec).split(",") if x.strip()]
+        tasks.extend(
+            Task.from_dict(d)
+            for d in load_dataset_as_tasks(str(dataset), n, indices=indices)
+        )
 
     if not tasks and config.get("task"):
         tasks.append(Task.from_dict({"user_prompt": config["task"], "task_id": "config-task"}))
@@ -455,75 +479,91 @@ async def _run_async(args: argparse.Namespace) -> int:
             print(f"resume: {len(done)} task(s) already complete in {results_path}",
                   file=sys.stderr)
 
+    sweagent_cfg = {
+        "deployment": args.sweagent_deployment,
+        "sweagent_dir": args.sweagent_dir,
+        "image_repo": args.sweagent_image_repo,
+        "per_instance_call_limit": args.sweagent_call_limit,
+        "output_dir": str(out_dir) if out_dir else "/tmp/sweagent_out",
+    }
+    sem = asyncio.Semaphore(max(1, int(args.concurrency)))
+    write_lock = asyncio.Lock()
+
     async def run_all(llm, session=None) -> List[Dict[str, Any]]:
-        results: List[Dict[str, Any]] = []
+        results: List[Dict[str, Any]] = [None] * len(tasks)  # type: ignore
         sess = session if session is not None else getattr(llm, "_session", None)
         tools: Any = await _resolve_tools(args, config_data, session=sess)
-        try:
-            res_f = results_path.open("a", encoding="utf-8") if results_path else None
-            out_f = output_data_path.open("w", encoding="utf-8") if output_data_path else None
-            try:
-                for i, task in enumerate(tasks):
-                    if task.task_id in done:
-                        results.append(done[task.task_id])
-                        _emit_progress(i, task, done[task.task_id])
-                        continue
-                    if hasattr(tools, "set_task_allowlist"):
-                        unified = (task.metadata or {}).get("_unified_task")
-                        et = getattr(unified, "enabled_tools", None) if unified else None
-                        tools.set_task_allowlist(et)
-                    agents = _build_agents(
-                        specs, llm, tools,
-                        session=sess, force_mock=args.mock,
-                    )
-                    task_sys = (task.metadata or {}).get("system_prompt") or ""
-                    if task_sys:
-                        for ag in agents.values():
-                            if not ag.state.messages or ag.state.messages[0].get("role") != "system":
-                                ag.state.messages.insert(0, {"role": "system", "content": task_sys})
-                            else:
-                                ag.state.messages[0] = {"role": "system", "content": task_sys}
-                    try:
-                        run_res = await strategy.run(task, agents, tools)
-                        row = _serialize_result(run_res, args.verbose)
-                    except Exception as exc:
-                        row = {
-                            "task_id": task.task_id,
-                            "strategy": args.strategy,
-                            "output_text": "",
-                            "e2e_latency_s": 0.0,
-                            "errors": [f"{type(exc).__name__}: {exc}"[:500]],
-                            "num_turns": 0,
-                        }
-                    if evaluator is not None and not row.get("errors"):
-                        ev = evaluator.evaluate(_eval_meta(task), row.get("output_text", "") or "")
-                        row["eval_passed"] = ev.passed
-                        row["eval_score"] = ev.score
-                        row["eval_details"] = ev.details
-                    elif row.get("errors"):
-                        row["eval_passed"] = False
-                        row["eval_score"] = 0.0
-                        row["eval_details"] = {"evaluator": "skipped", "reason": "task errored"}
+        res_f = results_path.open("a", encoding="utf-8") if results_path else None
+        out_f = output_data_path.open("w", encoding="utf-8") if output_data_path else None
+
+        async def _run_one(i: int, task: Task) -> None:
+            if task.task_id in done:
+                results[i] = done[task.task_id]
+                _emit_progress(i, task, done[task.task_id])
+                return
+            async with sem:
+                if hasattr(tools, "set_task_allowlist"):
+                    unified = (task.metadata or {}).get("_unified_task")
+                    et = getattr(unified, "enabled_tools", None) if unified else None
+                    tools.set_task_allowlist(et)
+                if task.metadata is None:
+                    task.metadata = {}
+                task.metadata.setdefault("sweagent_config", sweagent_cfg)
+                agents = _build_agents(
+                    specs, llm, tools,
+                    session=sess, force_mock=args.mock,
+                )
+                task_sys = (task.metadata or {}).get("system_prompt") or ""
+                if task_sys:
+                    for ag in agents.values():
+                        if not ag.state.messages or ag.state.messages[0].get("role") != "system":
+                            ag.state.messages.insert(0, {"role": "system", "content": task_sys})
+                        else:
+                            ag.state.messages[0] = {"role": "system", "content": task_sys}
+                try:
+                    run_res = await strategy.run(task, agents, tools)
+                    row = _serialize_result(run_res, args.verbose)
+                except Exception as exc:
+                    row = {
+                        "task_id": task.task_id,
+                        "strategy": args.strategy,
+                        "output_text": "",
+                        "e2e_latency_s": 0.0,
+                        "errors": [f"{type(exc).__name__}: {exc}"[:500]],
+                        "num_turns": 0,
+                    }
+                if evaluator is not None and not row.get("errors"):
+                    ev = evaluator.evaluate(_eval_meta(task), row.get("output_text", "") or "")
+                    row["eval_passed"] = ev.passed
+                    row["eval_score"] = ev.score
+                    row["eval_details"] = ev.details
+                elif row.get("errors"):
+                    row["eval_passed"] = False
+                    row["eval_score"] = 0.0
+                    row["eval_details"] = {"evaluator": "skipped", "reason": "task errored"}
+                async with write_lock:
                     if res_f:
                         res_f.write(json.dumps(row, ensure_ascii=False) + "\n")
                         res_f.flush()
                     if out_f:
                         out_f.write(json.dumps(row, ensure_ascii=False) + "\n")
                         out_f.flush()
-                    results.append(row)
+                    results[i] = row
                     _emit_progress(i, task, row)
-            finally:
-                if res_f:
-                    res_f.close()
-                if out_f:
-                    out_f.close()
+
+        try:
+            await asyncio.gather(*(_run_one(i, t) for i, t in enumerate(tasks)))
         finally:
+            if res_f:
+                res_f.close()
+            if out_f:
+                out_f.close()
             if tools is not None and hasattr(tools, "teardown"):
                 try:
                     await tools.teardown()
                 except Exception:
                     pass
-        return results
+        return [r for r in results if r is not None]
 
     if args.mock:
         results = await run_all(MockLLMClient())
@@ -532,6 +572,39 @@ async def _run_async(args: argparse.Namespace) -> int:
         timeout = aiohttp.ClientTimeout(total=1800, connect=60, sock_connect=60, sock_read=1800)
         async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
             results = await run_all(None, session=session)
+
+    if evaluator is not None and hasattr(evaluator, "finalize") and out_dir is not None:
+        print(f"\nRunning batch evaluator: {evaluator_name}", file=sys.stderr)
+        eval_results = evaluator.finalize(out_dir)
+        if eval_results and results_path is not None:
+            iid_to_row = {}
+            rows = []
+            for line in results_path.read_text().splitlines():
+                if not line.strip():
+                    continue
+                r = json.loads(line)
+                rows.append(r)
+                iid = (
+                    (r.get("eval_details") or {}).get("instance_id")
+                    or r.get("task_id")
+                )
+                if iid:
+                    iid_to_row[iid] = r
+            for iid, info in eval_results.items():
+                row = iid_to_row.get(iid)
+                if not row:
+                    continue
+                row["eval_passed"] = bool(info.get("resolved"))
+                row["eval_score"] = 1.0 if info.get("resolved") else 0.0
+                row["eval_details"] = {
+                    "evaluator": evaluator_name,
+                    "instance_id": iid,
+                    **(info.get("details") or {}),
+                }
+            with results_path.open("w", encoding="utf-8") as f:
+                for r in rows:
+                    f.write(json.dumps(r, ensure_ascii=False) + "\n")
+            results = rows
 
     _print_summary(results, evaluator_name)
 
