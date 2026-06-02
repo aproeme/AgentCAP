@@ -20,6 +20,8 @@ from agent_cap.agents.strategies import (
     Strategy,
     SupervisorStrategy,
 )
+from agent_cap.agents import strategies_sweagent  # registers "sweagent"  # noqa: F401
+from agent_cap.agents import evaluators_swebench  # registers "swebench"  # noqa: F401
 from agent_cap.agents.tools import LocalToolRegistry, ToolProvider, build_demo_tools
 from agent_cap.agents.types import (
     AgentSpec,

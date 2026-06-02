@@ -162,13 +162,23 @@ class RunResult:
                 "requests": self.total_usage.requests,
             },
             "errors": list(self.errors),
-            "num_turns": len(self.turns),
-            "tool_calls": sum(len(t.tool_calls) for t in self.turns),
-            "ttft_ms": (self.turns[0].ttft_s * 1000.0) if self.turns else 0.0,
+            "num_turns": (
+                len(self.turns) if self.turns
+                else int(self.extras.get("num_turns") or self.total_usage.requests or 0)
+            ),
+            "tool_calls": (
+                sum(len(t.tool_calls) for t in self.turns) if self.turns
+                else int(self.extras.get("tool_calls") or 0)
+            ),
+            "ttft_ms": (
+                (self.turns[0].ttft_s * 1000.0) if self.turns
+                else float(self.extras.get("ttft_ms_first") or self.extras.get("ttft_ms") or 0.0)
+            ),
             "tpot_ms": (
                 (sum(t.decode_s for t in self.turns) * 1000.0)
                 / max(1, self.total_usage.output_tokens)
-            ) if self.turns and self.total_usage.output_tokens > 0 else 0.0,
+            ) if self.turns and self.total_usage.output_tokens > 0
+            else float(self.extras.get("tpot_ms") or 0.0),
             "latency_ms": self.e2e_latency_s * 1000.0,
             "extras": dict(self.extras),
         }

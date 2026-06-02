@@ -1121,7 +1121,11 @@ async def run_experiment(
     )
 
 
-def _load_dataset_tasks(dataset_name: str, limit: int = 0) -> List[UnifiedTask]:
+def _load_dataset_tasks(
+    dataset_name: str,
+    limit: int = 0,
+    indices: Optional[List[int]] = None,
+) -> List[UnifiedTask]:
     name = dataset_name.lower().replace("-", "_").replace(" ", "_")
 
     if name in ("imo_answerbench", "imoanswerbench"):
@@ -1496,8 +1500,11 @@ def _load_dataset_tasks(dataset_name: str, limit: int = 0) -> List[UnifiedTask]:
 
         ds = hf_load("princeton-nlp/SWE-bench_Lite", split="test")
         tasks = []
-        for ex in ds:
+        index_set = set(indices) if indices else None
+        for row_idx, ex in enumerate(ds):
             if not isinstance(ex, dict):
+                continue
+            if index_set is not None and row_idx not in index_set:
                 continue
             instance_id = ex.get("instance_id", "")
             repo = ex.get("repo", "")
