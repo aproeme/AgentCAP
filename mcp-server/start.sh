@@ -66,6 +66,16 @@ fi
 SUBMODULE_CSV="$AGENT_ENV_DIR/data/repos/git_submodule_info.csv"
 if [ -f "$SUBMODULE_CSV" ]; then
     mkdir -p "$DATA_DIR/repos"
+    # Copy seed assets at data root (Top Movies.csv, memory.json, etc.) that
+    # task prompts reference directly.  Excludes the `repos/` subdir which is
+    # handled by the submodule clone loop below.
+    for src in "$AGENT_ENV_DIR/data/"*; do
+        name=$(basename "$src")
+        if [ "$name" = "repos" ]; then continue; fi
+        if [ ! -e "$DATA_DIR/$name" ]; then
+            cp -r "$src" "$DATA_DIR/$name"
+        fi
+    done
     if [ ! -d "$DATA_DIR/repos/mcp_code_executor_workspace" ] && [ -d "$AGENT_ENV_DIR/data/repos/mcp_code_executor_workspace" ]; then
         cp -r "$AGENT_ENV_DIR/data/repos/mcp_code_executor_workspace" "$DATA_DIR/repos/"
     fi

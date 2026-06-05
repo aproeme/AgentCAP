@@ -260,14 +260,17 @@ def load_mcpatlas_tasks(limit: int = 0, free_only: bool = False) -> List[MCPAtla
 async def list_openai_tools(
     session: aiohttp.ClientSession, mcp_url: str, enabled: Sequence[str]
 ) -> List[Dict[str, Any]]:
-    async with session.get(f"{mcp_url}/tools/list") as resp:
+    async with session.post(f"{mcp_url}/list-tools") as resp:
         data = await resp.json()
-    all_tools = data.get("tools", [])
-    enabled_set = set(enabled)
+    all_tools = data if isinstance(data, list) else data.get("tools", [])
+    enabled_set = {
+        e if isinstance(e, str) else (e.get("name", "") if isinstance(e, dict) else "")
+        for e in enabled
+    }
     result = []
     for t in all_tools:
         tool_name = t.get("name", "")
-        if tool_name in enabled_set or f"{tool_name}" in enabled_set:
+        if tool_name in enabled_set:
             schema = {
                 "type": "function",
                 "function": {
@@ -283,11 +286,13 @@ async def list_openai_tools(
 async def mcp_call_tool(
     session: aiohttp.ClientSession, mcp_url: str, name: str, args: Dict
 ) -> List[Dict[str, Any]]:
-    payload = {"name": name, "arguments": args}
+    payload = {"tool_name": name, "tool_args": args}
     async with session.post(
-        f"{mcp_url}/tools/call", json=payload, timeout=aiohttp.ClientTimeout(total=120)
+        f"{mcp_url}/call-tool", json=payload, timeout=aiohttp.ClientTimeout(total=120)
     ) as resp:
         data = await resp.json()
+    if isinstance(data, list):
+        return data
     return data.get("content", [])
 
 
