@@ -32,6 +32,8 @@ import glob
 import json
 import os
 import sys
+import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -41,6 +43,7 @@ import agent_cap.agents.strategies as _builtin_strategies  # noqa: F401 - side e
 from agent_cap.agents.agent import Agent
 from agent_cap.agents.evaluators import get_evaluator, list_evaluators
 from agent_cap.agents.llm import MockLLMClient, RealLLMClient, make_client, resolve_protocol_name
+from agent_cap.agents.metrics import aggregate_agent_metrics
 from agent_cap.agents.registry import (
     get_strategy,
     list_strategies,
@@ -565,6 +568,7 @@ async def _run_async(args: argparse.Namespace) -> int:
                     pass
         return [r for r in results if r is not None]
 
+    run_started_at = time.perf_counter()
     if args.mock:
         results = await run_all(MockLLMClient())
     else:
@@ -572,6 +576,7 @@ async def _run_async(args: argparse.Namespace) -> int:
         timeout = aiohttp.ClientTimeout(total=1800, connect=60, sock_connect=60, sock_read=1800)
         async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
             results = await run_all(None, session=session)
+    generation_wall_time_s = time.perf_counter() - run_started_at
 
     if evaluator is not None and hasattr(evaluator, "finalize") and out_dir is not None:
         print(f"\nRunning batch evaluator: {evaluator_name}", file=sys.stderr)
@@ -605,6 +610,35 @@ async def _run_async(args: argparse.Namespace) -> int:
                 for r in rows:
                     f.write(json.dumps(r, ensure_ascii=False) + "\n")
             results = rows
+
+    wall_time_s = generation_wall_time_s
+    if out_dir is not None:
+        metrics = aggregate_agent_metrics(
+            results,
+            wall_time_s=wall_time_s,
+            evaluator_name=evaluator_name,
+        )
+        suffix_base = str(
+            args.dataset
+            or config_data.get("dataset")
+            or args.strategy
+            or "agents"
+        )
+        suffix_base = "".join(
+            ch if ch.isalnum() or ch in ("-", "_") else "-"
+            for ch in suffix_base
+        ).strip("-") or "agents"
+        metrics_path = out_dir / f"metrics_{suffix_base}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        metrics_path.write_text(
+            json.dumps(metrics, ensure_ascii=False, indent=4),
+            encoding="utf-8",
+        )
+        # Stable latest pointer for scripts that do not want to glob timestamps.
+        (out_dir / "metrics.json").write_text(
+            json.dumps(metrics, ensure_ascii=False, indent=4),
+            encoding="utf-8",
+        )
+        print(f"metrics: {metrics_path}", file=sys.stderr)
 
     _print_summary(results, evaluator_name)
 
